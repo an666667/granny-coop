@@ -55,6 +55,13 @@ namespace GrannyCoop.EditorTools
                 if (Application.isBatchMode) EditorApplication.Exit(1);
                 return;
             }
+
+            // GameCI's validateBuild() only accepts the literal marker
+            // "Build succeeded!" (Unity itself prints "Build succeeded" without
+            // the bang on some versions). BuildResult.Succeeded was already
+            // verified above, so this just gives the CLI its expected marker.
+            Debug.Log("Build succeeded!");
+
             if (Application.isBatchMode) EditorApplication.Exit(0);
         }
     }
