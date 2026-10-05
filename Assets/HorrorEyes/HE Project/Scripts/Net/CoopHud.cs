@@ -7,14 +7,17 @@ using UnityEngine.UI;
 namespace GrannyCoop
 {
     /// <summary>
-    /// Runtime-built co-op UI. Nothing is added to the scenes by hand:
-    ///  - in the MainMenu scene: a centred panel to host / join a room
-    ///  - in the game scene: a one-line status bar (room code + connection)
+    /// Runtime-built co-op UI. Nothing is added to the scenes by hand.
     ///
-    /// Everything is built defensively: the built-in font name changed in
-    /// Unity 2022.2 (Arial.ttf -> LegacyRuntime.ttf), the EventSystem in the
-    /// shipped scene may lack an input module, and a silent early-return in a
-    /// click handler looks exactly like "the button does nothing" on device.
+    /// MainMenu scene has two views:
+    ///   - lobby        : create / join a room
+    ///   - waiting room : big room code + connection state + 开始游戏 (host)
+    /// The game scene shows a one-line status bar.
+    ///
+    /// Built defensively: the built-in font name changed in Unity 2022.2
+    /// (Arial.ttf -> LegacyRuntime.ttf), the EventSystem shipped in the scene
+    /// may lack an input module, and a silent early-return in a click handler
+    /// is indistinguishable from "the button is broken" on a device.
     /// </summary>
     public class CoopHud : MonoBehaviour
     {
@@ -23,9 +26,12 @@ namespace GrannyCoop
         GameObject _gameBar;
         Text _statusText;
         Text _gameStatusText;
+        Text _codeText;
+        Button _startButton;
         InputField _codeInput;
         Font _font;
         bool _busy;
+        bool _shownInRoom;
         string _feedback = "";
 
         void Awake()
@@ -214,12 +220,32 @@ namespace GrannyCoop
 
         void BuildMenuPanel()
         {
-            const float W = 700f;
-            _menuPanel = MakePanel(_canvas.transform, "CoopMenu", new Vector2(0.5f, 0.5f),
-                Vector2.zero, new Vector2(W, 640f), new Color(0.05f, 0.05f, 0.07f, 0.90f), false);
-            // centred panel: its children anchor to its own top-centre
-            var prt = _menuPanel.GetComponent<RectTransform>();
+            if (_menuPanel != null) { Destroy(_menuPanel); _menuPanel = null; }
+            _codeText = null;
+            _startButton = null;
+            _codeInput = null;
+            _statusText = null;
+
+            var s = CoopSession.Instance;
+            _shownInRoom = s != null && s.Role != CoopRole.None;
+            if (_shownInRoom) BuildWaitingRoom(s);
+            else BuildLobby();
+        }
+
+        const float W = 700f;
+
+        GameObject NewCentredPanel(float h)
+        {
+            var panel = MakePanel(_canvas.transform, "CoopMenu", new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(W, h), new Color(0.05f, 0.05f, 0.07f, 0.90f), false);
+            var prt = panel.GetComponent<RectTransform>();
             prt.anchorMin = prt.anchorMax = new Vector2(0.5f, 0.5f);
+            return panel;
+        }
+
+        void BuildLobby()
+        {
+            _menuPanel = NewCentredPanel(640f);
 
             MakeTextAt(_menuPanel.transform, "双人联机", 46, TextAnchor.UpperCenter, Color.white,
                 new Vector2(0, -12), new Vector2(W - 20, 60));
@@ -240,6 +266,40 @@ namespace GrannyCoop
             UpdateStatus();
         }
 
+        void BuildWaitingRoom(CoopSession s)
+        {
+            bool isHost = s.Role == CoopRole.Host;
+            _menuPanel = NewCentredPanel(720f);
+
+            MakeTextAt(_menuPanel.transform, isHost ? "等待房间（房主）" : "等待房间（加入方）", 42,
+                TextAnchor.UpperCenter, Color.white, new Vector2(0, -12), new Vector2(W - 20, 56));
+
+            MakeTextAt(_menuPanel.transform, "把房间码报给队友", 28, TextAnchor.UpperCenter,
+                new Color(0.75f, 0.75f, 0.8f), new Vector2(0, -84), new Vector2(W - 40, 36));
+
+            // the code itself, big enough to read out loud
+            _codeText = MakeTextAt(_menuPanel.transform, s.RoomCode, 132, TextAnchor.MiddleCenter,
+                new Color(1f, 0.95f, 0.55f), new Vector2(0, -124), new Vector2(W - 40, 170));
+
+            _statusText = MakeTextAt(_menuPanel.transform, "", 34, TextAnchor.UpperCenter,
+                new Color(0.7f, 1f, 0.7f), new Vector2(0, -300), new Vector2(W - 30, 120));
+
+            if (isHost)
+            {
+                _startButton = MakeButton(_menuPanel.transform, "开始游戏", new Vector2(0, -420),
+                    new Vector2(380, 108), OnStartGame);
+            }
+            else
+            {
+                MakeTextAt(_menuPanel.transform, "等待房主点「开始游戏」…", 30, TextAnchor.UpperCenter,
+                    new Color(0.85f, 0.85f, 0.9f), new Vector2(0, -430), new Vector2(W - 30, 60));
+            }
+
+            MakeButton(_menuPanel.transform, "退出房间", new Vector2(0, -570), new Vector2(300, 88), OnLeave);
+
+            UpdateStatus();
+        }
+
         void BuildGameBar()
         {
             _gameBar = MakePanel(_canvas.transform, "CoopBar", new Vector2(0f, 1f),
@@ -248,7 +308,16 @@ namespace GrannyCoop
             UpdateStatus();
         }
 
-        void Update() { UpdateStatus(); }
+        void Update()
+        {
+            var s = CoopSession.Instance;
+            bool nowInRoom = s != null && s.Role != CoopRole.None;
+
+            // lobby <-> waiting room when the session starts or ends
+            if (_menuPanel != null && nowInRoom != _shownInRoom) { BuildMenuPanel(); return; }
+
+            UpdateStatus();
+        }
 
         void UpdateStatus()
         {
@@ -256,14 +325,14 @@ namespace GrannyCoop
             string txt;
             if (s == null) txt = "联机模块未初始化";
             else if (s.Role == CoopRole.None) txt = "当前：单机模式";
-            else
-            {
-                string role = s.Role == CoopRole.Host ? "房主" : "加入方";
-                txt = "房间 " + s.RoomCode + " · " + role + " · " + (s.PeerReady ? "已连接" : s.Status);
-            }
+            else if (s.PeerReady) txt = "已连接 2/2 · 可以开始";
+            else txt = s.Status;
+
             if (!string.IsNullOrEmpty(_feedback)) txt += "\n" + _feedback;
+
             if (_statusText != null) _statusText.text = txt;
             if (_gameStatusText != null) _gameStatusText.text = txt;
+            if (_codeText != null && s != null) _codeText.text = s.RoomCode;
         }
 
         // Visible proof that a tap actually reached the UI layer.
@@ -285,7 +354,8 @@ namespace GrannyCoop
             StartCoroutine(s.StartHost("Player", (ok, err) =>
             {
                 _busy = false;
-                Note(ok ? "创建房间成功" : "创建失败：" + err);
+                Note(ok ? "创建成功，进入等待房间" : "创建失败：" + err);
+                BuildMenuPanel();
             }));
         }
 
@@ -301,15 +371,29 @@ namespace GrannyCoop
             StartCoroutine(s.StartClient(code, "Player", (ok, err) =>
             {
                 _busy = false;
-                Note(ok ? "加入房间成功" : "加入失败：" + err);
+                Note(ok ? "加入成功，进入等待房间" : "加入失败：" + err);
+                BuildMenuPanel();
             }));
+        }
+
+        // Reuses the game's own Play button so the selected level / enemy /
+        // difficulty are exactly the ones the host picked.
+        void OnStartGame()
+        {
+            Note("已点击：开始游戏");
+            var s = CoopSession.Instance;
+            if (s == null) { Note("联机模块未初始化"); return; }
+            var mm = FindObjectOfType<MainMenu>();
+            if (mm == null) { Note("找不到主菜单脚本，请用原来的「开始游戏」按钮"); return; }
+            mm.StartGame();
         }
 
         void OnLeave()
         {
-            Note("已点击：退出联机");
+            Note("已点击：退出房间");
             var s = CoopSession.Instance;
             if (s != null) s.StopCoop();
+            BuildMenuPanel();
         }
     }
 }
