@@ -30,12 +30,15 @@ jobs:
         with:
           targetPlatform: Android
           customImage: unityci/editor:ubuntu-2022.3.42f1-android-3
+          buildName: granny-coop
+          buildsPath: build
           buildMethod: GrannyCoop.EditorTools.CoopBuild.BuildAndroid
           manualExit: true
 
       - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: granny-coop-apk
           path: build/Android
-          if-no-files-found: error
+          if-no-files-found: warn
