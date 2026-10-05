@@ -162,7 +162,8 @@ namespace GrannyCoop
             if (found == null) { gameObject.SetActive(false); return; }
             _playing = found.name;
             _legacy.Stop();
-            _legacy.Play(found.name, PlayMode.Once);
+            found.wrapMode = WrapMode.Once;
+            _legacy.Play(found.name);
         }
 
         /// <summary>Play a one-shot action clip (e.g. "pickup") on this avatar.</summary>
@@ -183,7 +184,8 @@ namespace GrannyCoop
             if (found == null) return;
             _playing = found.name;
             _legacy.Stop();
-            _legacy.Play(found.name, PlayMode.Once);
+            found.wrapMode = WrapMode.Once;
+            _legacy.Play(found.name);
             _actionUntil = Time.time + Mathf.Max(0.3f, found.length);
         }
 
