@@ -29,7 +29,7 @@ namespace GrannyCoop.EditorTools
 
             // match the project's original ABI set (ARMv7 + ARM64)
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARMv7 | AndroidArchitecture.ARM64;
-            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel21;
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel22;
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.useCustomKeystore = false;   // debug keystore, fine for testing
 
