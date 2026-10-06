@@ -66,7 +66,7 @@ namespace GrannyCoop
         /// So measure the model, scale it to the player height, then drop its
         /// lowest point onto the avatar root.
         /// </summary>
-        static void FitModel(GameObject model, float targetHeight)
+        void FitModel(GameObject model, float targetHeight)
         {
             if (model == null || targetHeight <= 0f) return;
 

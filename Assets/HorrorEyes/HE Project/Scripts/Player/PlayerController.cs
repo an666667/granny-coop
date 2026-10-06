@@ -306,6 +306,13 @@ public class PlayerController : MonoBehaviour {
         float mouseX = CrossPlatformInputManager.GetAxis("Mouse X") * (mouseSensetivity * 2) * Time.deltaTime;
         float mouseY = CrossPlatformInputManager.GetAxis("Mouse Y") * (mouseSensetivity * 2) * Time.deltaTime;
 
+        // The CrossPlatform "Mouse X/Y" path is mouse-only on device, so on a phone
+        // the view never turned. Fold in real touch swipes (already in degrees for
+        // this frame) and let the clamping below keep handling the pitch limits.
+        GrannyCoop.TouchLookInput.Tick();
+        mouseX += GrannyCoop.TouchLookInput.YawDelta;
+        mouseY += GrannyCoop.TouchLookInput.PitchDelta;
+
         clampX += mouseY;
         clampY += mouseX;
 
