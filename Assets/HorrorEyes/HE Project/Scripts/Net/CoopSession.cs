@@ -37,6 +37,20 @@ namespace GrannyCoop
         WsClient _ws;
         string _wsUrl;
         float _wsRetryAt;
+
+        // Host: keep re-sending "start" until the peer confirms it loaded.
+        // The doc requires control messages (hello/welcome/ready/start) to be
+        // reliable with a timeout retry - a single fire-and-forget send means a
+        // client that was still connecting never enters the level.
+        bool _awaitingPeerLoaded;
+        string _startScene;
+        int _startEnemy, _startDiff;
+        float _startResendAt;
+        int _startResendCount;
+
+        // Client: ignore a duplicate "start" for a scene we are already loading.
+        string _lastStartScene;
+        float _lastStartAt;
         float _sendTimer;
         CoopAvatar _avatar;
 
@@ -79,6 +93,28 @@ namespace GrannyCoop
             DontDestroyOnLoad(gameObject);
             SceneManager.sceneLoaded += OnSceneLoaded;
         }
+        /// <summary>
+        /// A backgrounded phone freezes the app and the socket is dead on return,
+        /// so drop it on pause and let the reconnect path rebuild it on resume.
+        /// The server keeps the room for 3 minutes, so the peer is still there.
+        /// </summary>
+        void OnApplicationPause(bool paused)
+        {
+            if (!IsCoop) return;
+            if (paused)
+            {
+                NetConfig.Log("app paused -> dropping relay");
+                if (_ws != null) _ws.Close();
+                Status = "已切到后台";
+            }
+            else
+            {
+                NetConfig.Log("app resumed -> forcing relay reconnect");
+                _wsRetryAt = 0f;
+                Status = "连接断开，重连中…";
+            }
+        }
+
         void OnDestroy()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
@@ -205,6 +241,9 @@ namespace GrannyCoop
             _avatar = CoopAvatar.Create(PeerAvatar, tps);
             _avatar.Show(PeerReady);
 
+            // tell the host we are in the level (doc 4.5: everyone reports loaded)
+            if (IsClient) SendEv("loaded");
+
             NetConfig.Log("scene bound: enemies=" + _enemies.Count + " player=" + (_player != null) + " role=" + Role);
         }
 
@@ -230,6 +269,7 @@ namespace GrannyCoop
             if (!IsCoop) return;
 
             TryReconnectRelay();
+            TickStartRetry();
 
             if (_ws != null && _ws.Connected)
             {
@@ -400,9 +440,20 @@ namespace GrannyCoop
         /// does locally (same PlayerPrefs keys, same loading scene) so both
         /// peers end up in the same level.
         /// </summary>
+        // the MainMenu scene ships m_loadingSceneName = "LoadScene"; used only as a
+        // fallback when the MainMenu object cannot be found at that moment.
+        const string FallbackLoadingScene = "LoadScene";
+
         void ApplyRemoteStart(string sceneName, int enemyMode, int difficulty)
         {
             if (!IsClient || string.IsNullOrEmpty(sceneName)) return;
+
+            // the host retries until we report loaded, so ignore the repeats
+            if (sceneName == _lastStartScene && Time.unscaledTime - _lastStartAt < 30f)
+                return;
+            _lastStartScene = sceneName;
+            _lastStartAt = Time.unscaledTime;
+
             NetConfig.Log("remote start -> " + sceneName + " enemy=" + enemyMode + " diff=" + difficulty);
 
             PlayerPrefs.SetInt("EnemyMode", enemyMode);
@@ -412,12 +463,16 @@ namespace GrannyCoop
 
             MainMenu mm = FindObjectOfType<MainMenu>();
             string loading = (mm != null) ? mm.m_loadingSceneName : null;
-            if (string.IsNullOrEmpty(loading))
+            if (string.IsNullOrEmpty(loading)) loading = FallbackLoadingScene;
+
+            if (!Application.CanStreamedLevelBeLoaded(loading))
             {
-                NetConfig.LogError("remote start: no loading scene on MainMenu, loading level directly");
+                NetConfig.LogError("remote start: '" + loading + "' not in build settings, loading level directly");
+                Status = "房主已开始，载入中…";
                 SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
                 return;
             }
+
             Status = "房主已开始，载入中…";
             SceneManager.LoadScene(loading, LoadSceneMode.Single);
         }
@@ -435,6 +490,13 @@ namespace GrannyCoop
                 case "noise": if (IsHost) ApplyNoise(m.px, m.py, m.pz); break;
                 case "caught": if (IsClient && !_localDead) TriggerLocalCaught(); break;
                 case "start": ApplyRemoteStart(m.s, m.enemyMode, m.difficulty); break;
+                case "loaded":
+                    if (IsHost && _awaitingPeerLoaded)
+                    {
+                        _awaitingPeerLoaded = false;
+                        NetConfig.Log("peer reported loaded, start handshake complete");
+                    }
+                    break;
                 case "dead":
                     _peerDead = true;
                     if (_avatar != null) _avatar.PlayDeath();
@@ -553,7 +615,41 @@ namespace GrannyCoop
         public void BroadcastStart(string sceneName, int enemyMode, int difficulty)
         {
             if (!IsHost || _ws == null) return;
-            _ws.Send(JsonUtility.ToJson(new NetMsg { t = "ev", k = "start", s = sceneName, enemyMode = enemyMode, difficulty = difficulty }));
+            SendStart(sceneName, enemyMode, difficulty);
+
+            _startScene = sceneName;
+            _startEnemy = enemyMode;
+            _startDiff = difficulty;
+            _awaitingPeerLoaded = true;
+            _startResendCount = 0;
+            _startResendAt = Time.unscaledTime + 2f;
+            NetConfig.Log("start sent -> " + sceneName + " (retrying until peer reports loaded)");
+        }
+
+        void SendStart(string sceneName, int enemyMode, int difficulty)
+        {
+            if (_ws == null) return;
+            _ws.Send(JsonUtility.ToJson(new NetMsg { t = "ev", k = "start", s = sceneName,
+                                                     enemyMode = enemyMode, difficulty = difficulty }));
+        }
+
+        /// <summary>Re-send "start" every 2 s until the peer confirms it loaded.</summary>
+        void TickStartRetry()
+        {
+            if (!_awaitingPeerLoaded) return;
+            if (_ws == null || !_ws.Connected) return;
+            if (Time.unscaledTime < _startResendAt) return;
+
+            _startResendAt = Time.unscaledTime + 2f;
+            if (_startResendCount >= 10)
+            {
+                _awaitingPeerLoaded = false;
+                NetConfig.LogError("peer never reported loaded, giving up on start retries");
+                return;
+            }
+            _startResendCount++;
+            NetConfig.Log("start re-sent #" + _startResendCount);
+            SendStart(_startScene, _startEnemy, _startDiff);
         }
         public void BroadcastWin() { SendEv("win"); }
         public void BroadcastLose() { SendEv("lose"); }

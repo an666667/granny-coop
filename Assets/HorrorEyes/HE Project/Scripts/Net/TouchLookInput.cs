@@ -9,7 +9,7 @@ namespace GrannyCoop
     /// The shipped PlayerController.CameraRotation() reads CrossPlatformInputManager
     /// "Mouse X"/"Mouse Y". On device that is the mouse-only path (Input.GetAxis),
     /// which is always 0 on a phone, so the view never turned. CameraRotation()
-    /// now folds these deltas in, so the game's own pitch clamping and spine-angle
+    /// folds these deltas in, so the game's own pitch clamping and spine-angle
     /// handling stay in charge.
     ///
     /// Active Input Handling is "Input Manager (Old)", so this uses Input.GetTouch.
@@ -19,7 +19,16 @@ namespace GrannyCoop
         public static float Sensitivity = 0.16f; // degrees per pixel
         public static float Smooth = 20f;        // 0 = no smoothing
         public static float DeadZone = 2f;       // pixels per frame
-        public static bool RightHalfOnly = false; // the joystick is filtered by the UI test below
+
+        /// <summary>
+        /// Reserve the left half of the screen for the movement joystick, so
+        /// dragging the joystick can never rotate the view.
+        /// </summary>
+        public static bool RightHalfOnly = true;
+
+        /// <summary>Flip the swipe direction. Set false for "drag the world" feel.</summary>
+        public static bool InvertYaw = true;
+        public static bool InvertPitch = true;
 
         static int _fingerId = -1;
         static Vector2 _lastPos;
@@ -58,8 +67,8 @@ namespace GrannyCoop
                         _lastPos = t.position;
                         if (d.magnitude >= DeadZone)
                         {
-                            _targetYaw += d.x * Sensitivity;
-                            _targetPitch -= d.y * Sensitivity;
+                            _targetYaw += (InvertYaw ? -d.x : d.x) * Sensitivity;
+                            _targetPitch += (InvertPitch ? d.y : -d.y) * Sensitivity;
                         }
                     }
                     still = true;
@@ -73,8 +82,8 @@ namespace GrannyCoop
                 {
                     Touch t = Input.GetTouch(i);
                     if (t.phase != TouchPhase.Began) continue;
-                    // leave the movement stick alone: never steal a touch that
-                    // started on UI (joystick, buttons)
+                    // leave the movement joystick alone: never steal a touch that
+                    // starts on the left half or on UI (joystick, buttons)
                     if (RightHalfOnly && t.position.x < Screen.width * 0.5f) continue;
                     if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(t.fingerId)) continue;
                     _fingerId = t.fingerId;
