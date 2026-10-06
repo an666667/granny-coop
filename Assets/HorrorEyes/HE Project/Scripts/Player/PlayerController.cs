@@ -93,6 +93,18 @@ public class PlayerController : MonoBehaviour {
     [Header("Third Person Model Settings")]
     public Animator m_TPS_Player;
 
+    [Header("Prone Settings")]
+    [Tooltip("Capsule height while lying flat - low enough to crawl under a bed")]
+    public float proneHeight = 0.55f;
+    [Tooltip("Camera height while prone")]
+    public float proneCameraOffset = 0.45f;
+    [Tooltip("Movement speed while prone")]
+    public float proneSpeed = 0.8f;
+    [Tooltip("How far the model tips over while prone")]
+    public float proneTilt = 78f;
+    [HideInInspector] public bool prone;
+    private Quaternion m_modelBaseRot = Quaternion.identity;
+
     [Header("Jump Settings")]
     [Tooltip("Upward speed applied when jumping")]
     public float jumpSpeed = 4.5f;
@@ -110,6 +122,7 @@ public class PlayerController : MonoBehaviour {
         characterController = GetComponent<CharacterController>();
         clampX = 0f;
         moveSpeed = walkSpeed;
+        if (m_TPS_Player != null) m_modelBaseRot = m_TPS_Player.transform.localRotation;
 
 
     }
@@ -136,7 +149,27 @@ public class PlayerController : MonoBehaviour {
     /// <summary>Queued by the on-screen jump button; consumed in Movement().</summary>
     public void RequestJump()
     {
+        if (prone) SetProne(false);      // stand up first
         m_jumpRequested = true;
+    }
+
+    /// <summary>Lying flat: crawl speed, low capsule, low camera.</summary>
+    public void RequestProne() { SetProne(!prone); }
+
+    public void SetProne(bool on)
+    {
+        prone = on;
+        if (on)
+        {
+            crouch = false;
+            m_running = false;
+            if (m_runArrownImage != null) m_runArrownImage.SetActive(false);
+            moveSpeed = proneSpeed;
+        }
+        else
+        {
+            moveSpeed = crouch ? crouchSpeed : (m_running ? runSpeed : walkSpeed);
+        }
     }
 
     public void SetRun()
@@ -236,12 +269,12 @@ public class PlayerController : MonoBehaviour {
     private void Controll()
     {
            
-        float newHeight = crouch ? crouchHeight : normalHeight;
+        float newHeight = prone ? proneHeight : (crouch ? crouchHeight : normalHeight);
         characterController.height = Mathf.Lerp(characterController.height, newHeight, Time.deltaTime * lerpSpeed);
 
         characterController.center = Vector3.down * (normalHeight - characterController.height) / 2.0f;
 
-        float newCamPos = crouch ? cameraCrouchOffset : cameraNormalOffset;
+        float newCamPos = prone ? proneCameraOffset : (crouch ? cameraCrouchOffset : cameraNormalOffset);
         Vector3 newPos = new Vector3(cameraTransform.localPosition.x, newCamPos, cameraTransform.localPosition.z);
         cameraTransform.localPosition = Vector3.Lerp(cameraTransform.localPosition, newPos, Time.deltaTime *  lerpSpeed);
 
@@ -310,6 +343,15 @@ public class PlayerController : MonoBehaviour {
         characterController.Move(motion);
 
 
+
+        // lying flat: tip the model over so the body is level with the ground
+        if (m_TPS_Player != null)
+        {
+            Quaternion want = prone ? (m_modelBaseRot * Quaternion.Euler(proneTilt, 0f, 0f))
+                                    : m_modelBaseRot;
+            m_TPS_Player.transform.localRotation = Quaternion.Slerp(
+                m_TPS_Player.transform.localRotation, want, Time.deltaTime * 8f);
+        }
 
         m_TPS_Player.SetFloat("DirectionY", inputX, 0.2f, Time.deltaTime);
         m_TPS_Player.SetFloat("DirectionX", inputY, 0.2f, Time.deltaTime);
@@ -380,6 +422,7 @@ public class PlayerController : MonoBehaviour {
 
     public void SetCrouch()
     {
+        if (prone) { SetProne(false); return; }   // stand up instead of crouching
         
             if (!crouch)
             {

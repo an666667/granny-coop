@@ -131,7 +131,9 @@ namespace GrannyCoop
         {
             var go = NewUI(name, parent);
             var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
+            // The pivot doubles as the anchor point, otherwise every panel that
+            // is not meant to be top-centre lands at the top of the screen.
+            rt.anchorMin = rt.anchorMax = pivot;
             rt.pivot = pivot;
             rt.anchoredPosition = pos;
             rt.sizeDelta = size;
@@ -309,6 +311,73 @@ namespace GrannyCoop
             UpdateStatus();
         }
 
+        // ------------------------------------------------------------- icons
+        // No SVG rasteriser is available in the build environment, so the round
+        // button icons are drawn into textures here. The matching .svg sources
+        // live in Assets/HorrorEyes/HE Project/UI/Icons/ for editing.
+        static Sprite MakeIconSprite(int kind, Color bg, Color fg, int size = 256)
+        {
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.filterMode = FilterMode.Bilinear;
+
+            float cx = size * 0.5f, cy = size * 0.5f;
+            float r = size * 0.5f - 2f;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    float a = Mathf.Clamp01(r - d + 0.5f);      // antialiased rim
+                    Color c = bg;
+                    if (a > 0.01f && InGlyph(kind, dx / r, dy / r)) c = fg;
+                    c.a *= a;
+                    tex.SetPixel(x, y, c);
+                }
+            }
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        }
+
+        /// <summary>u,v are -1..1 within the circle; y up.</summary>
+        static bool InGlyph(int kind, float u, float v)
+        {
+            if (kind == 0)   // jump: up arrow
+            {
+                if (Mathf.Abs(u) < 0.15f && v > -0.42f && v < 0.30f) return true;
+                if (v >= 0.20f && v <= 0.62f && Mathf.Abs(u) <= (0.62f - v) * 1.10f) return true;
+                return false;
+            }
+            if (kind == 1)   // prone: body lying flat, head on the left
+            {
+                float hx = u + 0.42f, hy = v - 0.12f;
+                if (hx * hx + hy * hy < 0.080f) return true;
+                if (Mathf.Abs(v + 0.02f) < 0.15f && u > -0.22f && u < 0.58f) return true;
+                if (Mathf.Abs(v - 0.20f) < 0.06f && u > -0.18f && u < 0.30f) return true; // arm
+                return false;
+            }
+            return false;
+        }
+
+        Sprite _iconJump, _iconProne;
+
+        GameObject MakeIconButton(string name, Sprite icon, Vector2 pos, float size,
+                                  UnityEngine.Events.UnityAction onClick)
+        {
+            var go = MakePanel(_canvas.transform, name, new Vector2(1f, 0f), pos,
+                new Vector2(size, size), new Color(1f, 1f, 1f, 0f), true);
+            var img = go.GetComponent<Image>();
+            img.sprite = icon;
+            img.type = Image.Type.Simple;
+            img.preserveAspect = true;
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = img;
+            btn.onClick.AddListener(onClick);
+            return go;
+        }
+
         void BuildGameBar()
         {
             _gameBar = MakePanel(_canvas.transform, "CoopBar", new Vector2(0f, 1f),
@@ -320,20 +389,18 @@ namespace GrannyCoop
         }
 
         /// <summary>
-        /// Bottom-right jump button. The game ships no jump at all, so this is
-        /// the only way to trigger it on a phone. (RunButton sits at 74% height,
-        /// so the lower right is free - it is where the old look wheel used to be.)
+        /// Bottom-right action buttons: jump and prone. The game ships neither,
+        /// and RunButton sits at 74% height, so the lower right is free.
         /// </summary>
         void BuildJumpButton()
         {
-            var go = MakePanel(_canvas.transform, "Btn_Jump", new Vector2(1f, 0f),
-                new Vector2(-40f, 60f), new Vector2(210f, 160f),
-                new Color(0.20f, 0.42f, 0.24f, 0.88f), true);
-            var img = go.GetComponent<Image>();
-            var btn = go.AddComponent<Button>();
-            btn.targetGraphic = img;
-            MakeLabel(go.transform, "跳", 48, TextAnchor.MiddleCenter, Color.white);
-            btn.onClick.AddListener(OnJump);
+            if (_iconJump == null)
+                _iconJump = MakeIconSprite(0, new Color(0.20f, 0.62f, 0.30f, 0.95f), Color.white);
+            if (_iconProne == null)
+                _iconProne = MakeIconSprite(1, new Color(0.24f, 0.42f, 0.78f, 0.95f), Color.white);
+
+            MakeIconButton("Btn_Jump", _iconJump, new Vector2(-40f, 70f), 200f, OnJump);
+            MakeIconButton("Btn_Prone", _iconProne, new Vector2(-260f, 70f), 200f, OnProne);
         }
 
         void OnJump()
@@ -341,6 +408,14 @@ namespace GrannyCoop
             var p = FindObjectOfType<PlayerController>();
             if (p == null) return;
             p.RequestJump();
+        }
+
+        void OnProne()
+        {
+            var p = FindObjectOfType<PlayerController>();
+            if (p == null) return;
+            p.RequestProne();
+            Note(p.prone ? "趴下" : "起身");
         }
 
         Text _lookYawText, _lookPitchText;

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Prone (lying flat) button icon. Runtime equivalent: CoopHud.MakeIconSprite(kind: 1, ...). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <circle cx="128" cy="128" r="126" fill="#3D6BC7" fill-opacity="0.95"/>
+  <g fill="#FFFFFF">
+    <circle cx="74" cy="113" r="24"/>
+    <rect x="98" y="106" width="106" height="30" rx="15"/>
+    <rect x="104" y="86" width="64" height="16" rx="8"/>
+  </g>
+</svg>

@@ -287,6 +287,10 @@ namespace GrannyCoop
             _avatar = CoopAvatar.Create(PeerAvatar, tps);
             _avatar.Show(PeerReady);
 
+            // beds: both peers derive the same ids/coordinates from the level
+            // spawn point, so no extra protocol traffic is needed
+            if (_player != null) CoopFurniture.SpawnForScene(_player.transform);
+
             // tell the host we are in the level (doc 4.5: everyone reports loaded)
             if (IsClient) SendEv("loaded");
 

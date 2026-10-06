@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Jump button icon. Runtime equivalent: CoopHud.MakeIconSprite(kind: 0, ...).
+     Edit here for reference / future rasterisation; the game draws the same
+     shape procedurally because no SVG rasteriser exists in the build image. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <circle cx="128" cy="128" r="126" fill="#339E4D" fill-opacity="0.95"/>
+  <g fill="#FFFFFF">
+    <rect x="109" y="96" width="38" height="90" rx="6"/>
+    <path d="M128 48 L168 108 L88 108 Z"/>
+  </g>
+</svg>
