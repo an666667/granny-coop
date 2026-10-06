@@ -31,6 +31,7 @@ namespace GrannyCoop
         InputField _codeInput;
         Font _font;
         bool _busy;
+        float _busySince;
         bool _shownInRoom;
         string _feedback = "";
 
@@ -245,7 +246,7 @@ namespace GrannyCoop
 
         void BuildLobby()
         {
-            _menuPanel = NewCentredPanel(640f);
+            _menuPanel = NewCentredPanel(740f);
 
             MakeTextAt(_menuPanel.transform, "双人联机", 46, TextAnchor.UpperCenter, Color.white,
                 new Vector2(0, -12), new Vector2(W - 20, 60));
@@ -261,8 +262,10 @@ namespace GrannyCoop
 
             MakeButton(_menuPanel.transform, "退出联机", new Vector2(0, -360), new Vector2(300, 88), OnLeave);
 
-            _statusText = MakeTextAt(_menuPanel.transform, "", 28, TextAnchor.UpperCenter,
-                new Color(0.7f, 1f, 0.7f), new Vector2(0, -470), new Vector2(W - 30, 150));
+            MakeButton(_menuPanel.transform, "测试服务器", new Vector2(0, -462), new Vector2(300, 84), OnPing);
+
+            _statusText = MakeTextAt(_menuPanel.transform, "", 26, TextAnchor.UpperCenter,
+                new Color(0.7f, 1f, 0.7f), new Vector2(0, -560), new Vector2(W - 30, 150));
             UpdateStatus();
         }
 
@@ -316,6 +319,14 @@ namespace GrannyCoop
             // lobby <-> waiting room when the session starts or ends
             if (_menuPanel != null && nowInRoom != _shownInRoom) { BuildMenuPanel(); return; }
 
+            // A request that never calls back must not leave the UI stuck on
+            // "正在处理中" forever - surface it instead.
+            if (_busy && Time.unscaledTime - _busySince > 20f)
+            {
+                _busy = false;
+                Note("请求超时（20 秒无响应）");
+            }
+
             UpdateStatus();
         }
 
@@ -350,7 +361,7 @@ namespace GrannyCoop
             if (_busy) { Note("正在处理中，请稍候…"); return; }
             var s = CoopSession.Instance;
             if (s == null) { Note("联机模块未初始化（CoopSession 为空）"); return; }
-            _busy = true;
+            _busy = true; _busySince = Time.unscaledTime;
             StartCoroutine(s.StartHost("Player", (ok, err) =>
             {
                 _busy = false;
@@ -367,7 +378,7 @@ namespace GrannyCoop
             var s = CoopSession.Instance;
             if (s == null) { Note("联机模块未初始化（CoopSession 为空）"); return; }
             if (string.IsNullOrEmpty(code)) { Note("请先在上面输入房间码"); return; }
-            _busy = true;
+            _busy = true; _busySince = Time.unscaledTime;
             StartCoroutine(s.StartClient(code, "Player", (ok, err) =>
             {
                 _busy = false;
@@ -386,6 +397,18 @@ namespace GrannyCoop
             var mm = FindObjectOfType<MainMenu>();
             if (mm == null) { Note("找不到主菜单脚本，请用原来的「开始游戏」按钮"); return; }
             mm.StartGame();
+        }
+
+        void OnPing()
+        {
+            Note("已点击：测试服务器");
+            if (_busy) { Note("正在处理中，请稍候…"); return; }
+            _busy = true; _busySince = Time.unscaledTime;
+            StartCoroutine(GameBackend.Ping((ok, info) =>
+            {
+                _busy = false;
+                Note(ok ? "服务器正常：" + info : "服务器异常：" + info);
+            }));
         }
 
         void OnLeave()

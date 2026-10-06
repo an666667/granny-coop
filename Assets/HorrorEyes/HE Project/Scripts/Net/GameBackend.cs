@@ -71,6 +71,32 @@ namespace GrannyCoop
             }
         }
 
+        /// <summary>Connectivity self-test: GET /healthz and report the raw result.</summary>
+        public static IEnumerator Ping(Action<bool, string> done)
+        {
+            if (done == null) done = (a, b) => { };
+            using (var req = UnityWebRequest.Get(NetConfig.BaseUrl + "/healthz"))
+            {
+                req.timeout = 10;
+                yield return req.SendWebRequest();
+
+                bool ok = req.result == UnityWebRequest.Result.Success;
+                string info;
+                if (ok)
+                {
+                    info = "HTTP " + req.responseCode;
+                    if (req.downloadHandler != null && !string.IsNullOrEmpty(req.downloadHandler.text))
+                        info += " " + req.downloadHandler.text.Trim();
+                }
+                else
+                {
+                    info = req.result + " | " + req.error;
+                }
+                NetConfig.Log("[ping] " + NetConfig.BaseUrl + "/healthz -> " + info);
+                done(ok, info);
+            }
+        }
+
         /// <summary>Guest login. Returns token + playerId. No registration needed.</summary>
         public static IEnumerator GuestLogin(string name, Action<bool, string> done)
         {
