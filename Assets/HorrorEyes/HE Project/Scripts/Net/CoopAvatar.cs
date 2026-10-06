@@ -26,6 +26,43 @@ namespace GrannyCoop
         float _tYaw;
         bool _hasTarget;
 
+        /// <summary>Player capsule height, used to size the model.</summary>
+        const float PlayerHeight = 1.8f;
+
+        /// <summary>
+        /// The Poly.pizza FBX has no pinned import scale (no .meta is shipped),
+        /// so its native size cannot be trusted - it can come in far taller
+        /// than the level. Measure it and scale it to the player height instead
+        /// of forcing localScale = 1.
+        /// </summary>
+        static void FitToHeight(GameObject model, float targetHeight)
+        {
+            if (model == null || targetHeight <= 0f) return;
+
+            var renderers = model.GetComponentsInChildren<Renderer>(true);
+            if (renderers == null || renderers.Length == 0) return;
+
+            bool any = false;
+            Bounds b = new Bounds();
+            foreach (var r in renderers)
+            {
+                if (r == null) continue;
+                if (!any) { b = r.bounds; any = true; }
+                else b.Encapsulate(r.bounds);
+            }
+            if (!any) return;
+
+            float h = b.size.y;
+            if (h <= 0.0001f) return;
+
+            float k = targetHeight / h;
+            if (k <= 0f || float.IsNaN(k) || float.IsInfinity(k)) return;
+
+            model.transform.localScale = model.transform.localScale * k;
+            NetConfig.Log("avatar: model height " + h.ToString("F3") + " -> " + targetHeight.ToString("F2")
+                          + " (x" + k.ToString("F4") + ")");
+        }
+
         public static CoopAvatar Create(int avatarIndex, Transform fallbackTpsModel)
         {
             var go = new GameObject("CoopAvatar");
@@ -66,6 +103,7 @@ namespace GrannyCoop
             model.transform.localPosition = Vector3.zero;
             model.transform.localRotation = Quaternion.identity;
             model.transform.localScale = Vector3.one;
+            FitToHeight(model, PlayerHeight);
 
             // solid body so the two players physically block each other.
             // On the host the separate CoopClientProxy already carries the body, so skip here.

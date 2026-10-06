@@ -390,6 +390,33 @@ namespace GrannyCoop
             BroadcastStart(sc, PlayerPrefs.GetInt("EnemyMode", 0), PlayerPrefs.GetInt("GameDifficulty", 0));
         }
 
+        /// <summary>
+        /// The host pressed 开始游戏: mirror exactly what MainMenu.StartGame()
+        /// does locally (same PlayerPrefs keys, same loading scene) so both
+        /// peers end up in the same level.
+        /// </summary>
+        void ApplyRemoteStart(string sceneName, int enemyMode, int difficulty)
+        {
+            if (!IsClient || string.IsNullOrEmpty(sceneName)) return;
+            NetConfig.Log("remote start -> " + sceneName + " enemy=" + enemyMode + " diff=" + difficulty);
+
+            PlayerPrefs.SetInt("EnemyMode", enemyMode);
+            PlayerPrefs.SetString("GameLevel", sceneName);
+            PlayerPrefs.SetInt("GameDifficulty", difficulty);
+            PlayerPrefs.Save();
+
+            MainMenu mm = FindObjectOfType<MainMenu>();
+            string loading = (mm != null) ? mm.m_loadingSceneName : null;
+            if (string.IsNullOrEmpty(loading))
+            {
+                NetConfig.LogError("remote start: no loading scene on MainMenu, loading level directly");
+                SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
+                return;
+            }
+            Status = "房主已开始，载入中…";
+            SceneManager.LoadScene(loading, LoadSceneMode.Single);
+        }
+
         void HandleEvent(NetMsg m)
         {
             switch (m.k)
@@ -402,6 +429,7 @@ namespace GrannyCoop
                 case "pill": if (IsHost && _gc != null) _gc.AddEyePills(1); break;
                 case "noise": if (IsHost) ApplyNoise(m.px, m.py, m.pz); break;
                 case "caught": if (IsClient && !_localDead) TriggerLocalCaught(); break;
+                case "start": ApplyRemoteStart(m.s, m.enemyMode, m.difficulty); break;
                 case "dead":
                     _peerDead = true;
                     if (_avatar != null) _avatar.PlayDeath();
