@@ -35,32 +35,56 @@ namespace GrannyCoop
         /// than the level. Measure it and scale it to the player height instead
         /// of forcing localScale = 1.
         /// </summary>
-        static void FitToHeight(GameObject model, float targetHeight)
+        static bool TryBounds(GameObject model, out Bounds b)
         {
-            if (model == null || targetHeight <= 0f) return;
-
+            b = new Bounds();
             var renderers = model.GetComponentsInChildren<Renderer>(true);
-            if (renderers == null || renderers.Length == 0) return;
+            if (renderers == null || renderers.Length == 0) return false;
 
             bool any = false;
-            Bounds b = new Bounds();
             foreach (var r in renderers)
             {
                 if (r == null) continue;
                 if (!any) { b = r.bounds; any = true; }
                 else b.Encapsulate(r.bounds);
             }
-            if (!any) return;
+            return any;
+        }
+
+        /// <summary>
+        /// The two Poly.pizza FBX files do not share a pivot: one has its origin
+        /// at the feet, the other at mid-body. Left alone, the second one sits
+        /// half-buried in the floor (which also makes it invisible to the peer).
+        /// So measure the model, scale it to the player height, then drop its
+        /// lowest point onto the avatar root.
+        /// </summary>
+        static void FitModel(GameObject model, float targetHeight)
+        {
+            if (model == null || targetHeight <= 0f) return;
+
+            Bounds b;
+            if (!TryBounds(model, out b)) return;
 
             float h = b.size.y;
-            if (h <= 0.0001f) return;
+            if (h > 0.0001f)
+            {
+                float k = targetHeight / h;
+                if (k > 0f && !float.IsNaN(k) && !float.IsInfinity(k))
+                {
+                    model.transform.localScale = model.transform.localScale * k;
+                    NetConfig.Log("avatar: model height " + h.ToString("F3") + " -> " + targetHeight.ToString("F2")
+                                  + " (x" + k.ToString("F4") + ")");
+                }
+            }
 
-            float k = targetHeight / h;
-            if (k <= 0f || float.IsNaN(k) || float.IsInfinity(k)) return;
+            if (!TryBounds(model, out b)) return;
 
-            model.transform.localScale = model.transform.localScale * k;
-            NetConfig.Log("avatar: model height " + h.ToString("F3") + " -> " + targetHeight.ToString("F2")
-                          + " (x" + k.ToString("F4") + ")");
+            Transform root = model.transform.parent;
+            float rootY = (root != null) ? root.position.y : 0f;
+            float delta = b.min.y - rootY;          // >0 floats, <0 sinks
+            if (Mathf.Abs(delta) < 0.001f) return;
+            model.transform.position -= new Vector3(0f, delta, 0f);
+            NetConfig.Log("avatar: feet aligned by " + (-delta).ToString("F3"));
         }
 
         public static CoopAvatar Create(int avatarIndex, Transform fallbackTpsModel)
@@ -103,7 +127,7 @@ namespace GrannyCoop
             model.transform.localPosition = Vector3.zero;
             model.transform.localRotation = Quaternion.identity;
             model.transform.localScale = Vector3.one;
-            FitToHeight(model, PlayerHeight);
+            FitModel(model, PlayerHeight);
 
             // solid body so the two players physically block each other.
             // On the host the separate CoopClientProxy already carries the body, so skip here.
@@ -155,6 +179,14 @@ namespace GrannyCoop
         public void ApplyState(Vector3 pos, float yaw, float spd, bool crouch)
         {
             if (_dead) return;
+            if (!_hasTarget)
+            {
+                // The avatar is created before any state arrives, so it starts
+                // at the world origin. Snap on the first update instead of
+                // sliding across the level.
+                transform.position = pos;
+                transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            }
             _tPos = pos;
             _tYaw = yaw;
             _spd = Mathf.Clamp01(spd);
