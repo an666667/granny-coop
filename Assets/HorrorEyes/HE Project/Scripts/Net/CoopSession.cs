@@ -35,6 +35,8 @@ namespace GrannyCoop
         public bool IsApplyingRemote = false;
 
         WsClient _ws;
+        string _wsUrl;
+        float _wsRetryAt;
         float _sendTimer;
         CoopAvatar _avatar;
 
@@ -123,9 +125,11 @@ namespace GrannyCoop
         void ConnectRelay(string code, string role)
         {
             _ws = new WsClient();
-            string url = NetConfig.WsBaseUrl + "/api/v1/ws?code=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(code)
-                       + "&token=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(GameBackend.Token) + "&role=" + role;
-            _ws.Connect(url);
+            _wsUrl = NetConfig.WsBaseUrl + "/api/v1/ws?code=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(code)
+                   + "&token=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(GameBackend.Token)
+                   + "&role=" + role;
+            _ws.Connect(_wsUrl);
+            _wsRetryAt = Time.unscaledTime + 4f;
         }
 
         public void StopCoop()
@@ -200,9 +204,27 @@ namespace GrannyCoop
         }
 
         // ------------------------------------------------------------ update
+        /// <summary>
+        /// The relay socket can drop (app backgrounded, NAT timeout, network
+        /// blip). The room survives on the server now, so just reconnect and
+        /// let the server re-pair the two members by playerId.
+        /// </summary>
+        void TryReconnectRelay()
+        {
+            if (_ws == null || string.IsNullOrEmpty(_wsUrl)) return;
+            if (_ws.Connected) return;
+            if (Time.unscaledTime < _wsRetryAt) return;
+            _wsRetryAt = Time.unscaledTime + 4f;
+            Status = "连接断开，重连中…";
+            NetConfig.Log("relay reconnect -> " + _wsUrl);
+            _ws.Connect(_wsUrl);
+        }
+
         void Update()
         {
             if (!IsCoop) return;
+
+            TryReconnectRelay();
 
             if (_ws != null && _ws.Connected)
             {
@@ -291,6 +313,10 @@ namespace GrannyCoop
                         if (_avatar != null) _avatar.Show(false);
                         if (_gc != null && !string.IsNullOrEmpty(_gc.m_mainMenuSceneName))
                             SceneManager.LoadScene(_gc.m_mainMenuSceneName);
+                    }
+                    else if (m.e == "joined")
+                    {
+                        Status = (Role == CoopRole.Host) ? "等待好友加入…" : "等待房主开始…";
                     }
                     else if (m.e == "error") { Status = "错误: " + m.msg; }
                     break;
