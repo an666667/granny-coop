@@ -31,21 +31,22 @@ namespace GrannyCoop
         /// turns left. Players can toggle it in game (the 视角 button) and the
         /// choice is remembered.
         /// </summary>
-        public static bool InvertYaw = false;
-        public static bool InvertPitch = false;
+        public static bool InvertYaw = false;    // left/right: direct by default
+        public static bool InvertPitch = true;   // up/down: swiping up looks up
 
-        const string InvertPrefKey = "CoopLookInvert";
+        const string YawPrefKey = "CoopLookInvertYaw";
+        const string PitchPrefKey = "CoopLookInvertPitch";
 
         public static void LoadPrefs()
         {
-            bool inv = PlayerPrefs.GetInt(InvertPrefKey, 0) != 0;
-            InvertYaw = inv;
-            InvertPitch = inv;
+            InvertYaw = PlayerPrefs.GetInt(YawPrefKey, 0) != 0;
+            InvertPitch = PlayerPrefs.GetInt(PitchPrefKey, 1) != 0;
         }
 
         public static void SavePrefs()
         {
-            PlayerPrefs.SetInt(InvertPrefKey, (InvertYaw || InvertPitch) ? 1 : 0);
+            PlayerPrefs.SetInt(YawPrefKey, InvertYaw ? 1 : 0);
+            PlayerPrefs.SetInt(PitchPrefKey, InvertPitch ? 1 : 0);
             PlayerPrefs.Save();
         }
 

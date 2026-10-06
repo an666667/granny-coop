@@ -312,36 +312,56 @@ namespace GrannyCoop
             UpdateStatus();
         }
 
-        Text _lookToggleText;
+        Text _lookYawText, _lookPitchText;
 
         /// <summary>
-        /// Swipe-look direction is a taste thing, so make it switchable on the
-        /// device instead of costing a rebuild every time.
+        /// Swipe-look direction is a taste thing, and yaw/pitch are independent
+        /// (one can be direct while the other is flipped), so both get their own
+        /// on-device button. Choices are remembered across launches, which saves
+        /// a 20 minute rebuild every time the feel needs adjusting.
         /// </summary>
         void BuildLookToggle()
         {
-            var go = MakePanel(_canvas.transform, "Btn_LookToggle", new Vector2(1f, 0.5f),
-                new Vector2(-24f, 0f), new Vector2(260f, 88f), new Color(0.16f, 0.16f, 0.20f, 0.85f), true);
+            _lookYawText = MakeLookButton("视角左右", 70f, true);
+            _lookPitchText = MakeLookButton("视角上下", -70f, false);
+            RefreshLookLabels();
+        }
+
+        Text MakeLookButton(string name, float y, bool yaw)
+        {
+            var go = MakePanel(_canvas.transform, "Btn_" + name, new Vector2(1f, 0.5f),
+                new Vector2(-24f, y), new Vector2(300f, 84f), new Color(0.16f, 0.16f, 0.20f, 0.85f), true);
             var img = go.GetComponent<Image>();
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = img;
-            _lookToggleText = MakeLabel(go.transform, LookToggleLabel(), 28, TextAnchor.MiddleCenter, Color.white);
-            btn.onClick.AddListener(OnToggleLook);
+            var txt = MakeLabel(go.transform, "", 26, TextAnchor.MiddleCenter, Color.white);
+            if (yaw) btn.onClick.AddListener(OnToggleYaw);
+            else btn.onClick.AddListener(OnTogglePitch);
+            return txt;
         }
 
-        static string LookToggleLabel()
+        void RefreshLookLabels()
         {
-            return TouchLookInput.InvertYaw ? "视角 反向" : "视角 正向";
+            if (_lookYawText != null)
+                _lookYawText.text = "视角左右 " + (TouchLookInput.InvertYaw ? "反向" : "正向");
+            if (_lookPitchText != null)
+                _lookPitchText.text = "视角上下 " + (TouchLookInput.InvertPitch ? "反向" : "正向");
         }
 
-        void OnToggleLook()
+        void OnToggleYaw()
         {
-            bool inv = !TouchLookInput.InvertYaw;
-            TouchLookInput.InvertYaw = inv;
-            TouchLookInput.InvertPitch = inv;
+            TouchLookInput.InvertYaw = !TouchLookInput.InvertYaw;
             TouchLookInput.SavePrefs();
-            if (_lookToggleText != null) _lookToggleText.text = LookToggleLabel();
-            Note(inv ? "视角方向：反向（已记住）" : "视角方向：正向（已记住）");
+            RefreshLookLabels();
+            Note("视角左右：" + (TouchLookInput.InvertYaw ? "反向" : "正向") + "（已记住）");
+        }
+
+        void OnTogglePitch()
+        {
+            TouchLookInput.InvertPitch = !TouchLookInput.InvertPitch;
+            TouchLookInput.SavePrefs();
+            RefreshLookLabels();
+            Note("视角上下：" + (TouchLookInput.InvertPitch ? "反向" : "正向") + "（已记住）");
         }
 
         /// <summary>
