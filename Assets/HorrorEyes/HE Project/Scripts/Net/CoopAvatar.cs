@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace GrannyCoop
 {
@@ -26,8 +27,39 @@ namespace GrannyCoop
         float _tYaw;
         bool _hasTarget;
 
-        /// <summary>Player capsule height, used to size the model.</summary>
+        /// <summary>Fallback player capsule height when the controller is not around yet.</summary>
         const float PlayerHeight = 1.8f;
+
+        static float _groundOffset = -1f;
+        static int _groundScene = int.MinValue;
+
+        /// <summary>
+        /// How far the feet sit BELOW the player root.
+        ///
+        /// PlayerController.Controll() does
+        ///     characterController.center = Vector3.down * (normalHeight - height) / 2
+        /// so while standing (height == normalHeight) the centre is 0, i.e. the
+        /// capsule - and therefore the transform we sync - sits at the player's
+        /// WAIST. Placing the model's feet on the reported position therefore
+        /// lifts the whole character by half its height: it floats, and its head
+        /// ends up around 2.7 m, poking through the ceiling.
+        ///
+        /// Read per scene from the local player, so every level adapts itself.
+        /// </summary>
+        public static float GroundOffset()
+        {
+            int scn = SceneManager.GetActiveScene().buildIndex;
+            if (_groundOffset < 0f || scn != _groundScene)
+            {
+                _groundScene = scn;
+                _groundOffset = PlayerHeight * 0.5f;
+                var p = FindObjectOfType<PlayerController>();
+                if (p != null && p.normalHeight > 0.1f) _groundOffset = p.normalHeight * 0.5f;
+                NetConfig.Log("avatar: ground offset " + _groundOffset.ToString("F3")
+                              + " (scene " + scn + ")");
+            }
+            return _groundOffset;
+        }
 
         // exposed for the on-screen diagnostics
         public float MeasuredHeight;
@@ -168,9 +200,12 @@ namespace GrannyCoop
 
         void Build(int avatarIndex, Transform fallback)
         {
+            // Host (index 0) uses a freshly downloaded Quaternius model: it is
+            // properly skinned and ships Idle / Walk / Run / Jump / Death clips,
+            // unlike the old male mesh which had no armature at all.
             string path = (avatarIndex == 1)
                 ? "PolyPizza/AnimatedWoman_Female"
-                : "PolyPizza/AnimatedHuman_Male";
+                : "PolyPizza/AnimatedMan_Host";
             _modelPath = path;
 
             GameObject model = null;
@@ -262,15 +297,19 @@ namespace GrannyCoop
         public void ApplyState(Vector3 pos, float yaw, float spd, bool crouch)
         {
             if (_dead) return;
+
+            // the peer reports its transform, which sits at the capsule centre
+            Vector3 grounded = pos - Vector3.up * GroundOffset();
+
             if (!_hasTarget)
             {
                 // The avatar is created before any state arrives, so it starts
                 // at the world origin. Snap on the first update instead of
                 // sliding across the level.
-                transform.position = pos;
+                transform.position = grounded;
                 transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             }
-            _tPos = pos;
+            _tPos = grounded;
             _tYaw = yaw;
             _spd = Mathf.Clamp01(spd);
             _crouch = crouch;

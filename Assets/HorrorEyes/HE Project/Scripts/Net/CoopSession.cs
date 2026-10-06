@@ -170,6 +170,28 @@ namespace GrannyCoop
 
         // ---- diagnostics accessors (read by CoopHud) ----
         public CoopAvatar PeerAvatarObject { get { return _avatar; } }
+
+        public string RoleName
+        {
+            get
+            {
+                if (Role == CoopRole.Host) return "房主";
+                if (Role == CoopRole.Client) return "玩家";
+                return "单机";
+            }
+        }
+
+        /// <summary>Enemy state for the on-screen diagnostics.</summary>
+        public string EnemyDiag()
+        {
+            if (_enemies.Count == 0) return "老奶奶: 未采集到";
+            var e = _enemies[0];
+            if (e == null) return "老奶奶: 空引用";
+            Vector3 ep = e.transform.position;
+            return "老奶奶 " + _enemies.Count + "个 " + (e.enabled ? "AI开" : "AI关")
+                 + (e.gameObject.activeInHierarchy ? " 活跃" : " 未激活")
+                 + " (" + ep.x.ToString("F1") + "," + ep.y.ToString("F1") + "," + ep.z.ToString("F1") + ")";
+        }
         public bool HasLocalPlayer { get { return _player != null; } }
         public Vector3 LocalPlayerPos { get { return _player != null ? _player.transform.position : Vector3.zero; } }
 
@@ -216,6 +238,30 @@ namespace GrannyCoop
                     foreach (var c in e.GetComponentsInChildren<Collider>(true)) c.enabled = false;
                     var rb = e.GetComponent<Rigidbody>();
                     if (rb != null) rb.isKinematic = true;
+                }
+            }
+
+            // FindObjectsOfType only sees ACTIVE objects. If the scene binds
+            // before the enemy spawns we would sync nothing and the peer's
+            // mirror would sit frozen at the spawn point forever, so keep
+            // re-collecting for a few seconds.
+            if (_enemies.Count == 0)
+            {
+                for (int i = 0; i < 10 && _enemies.Count == 0; i++)
+                {
+                    yield return new WaitForSeconds(0.5f);
+                    _enemies.AddRange(FindObjectsOfType<Enemy>());
+                }
+                NetConfig.Log("scene bound: late enemy pickup, enemies=" + _enemies.Count);
+                if (_enemies.Count > 0 && IsClient)
+                {
+                    foreach (var e in _enemies)
+                    {
+                        e.enabled = false;
+                        foreach (var c in e.GetComponentsInChildren<Collider>(true)) c.enabled = false;
+                        var rb2 = e.GetComponent<Rigidbody>();
+                        if (rb2 != null) rb2.isKinematic = true;
+                    }
                 }
             }
 
@@ -381,7 +427,9 @@ namespace GrannyCoop
                     if (_avatar != null) _avatar.ApplyState(_lastPeerPos, m.ry, m.spd, m.crouch != 0);
                     if (IsHost && _clientProxy != null)
                     {
-                        _clientProxy.position = Vector3.Lerp(_clientProxy.position, _lastPeerPos, Time.deltaTime * NetConfig.InterpSpeed);
+                        // the reported position is the capsule centre, so drop it to the floor
+                        Vector3 proxyPos = _lastPeerPos - Vector3.up * CoopAvatar.GroundOffset();
+                        _clientProxy.position = Vector3.Lerp(_clientProxy.position, proxyPos, Time.deltaTime * NetConfig.InterpSpeed);
                         if (!_clientProxy.gameObject.activeSelf) _clientProxy.gameObject.SetActive(true);
                     }
                     break;

@@ -33,6 +33,10 @@ namespace GrannyCoop.EditorTools
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.useCustomKeystore = false;   // debug keystore, fine for testing
 
+            // Stamp every build so the HUD can prove which APK is installed.
+            PlayerSettings.bundleVersion = "b" + System.DateTime.UtcNow.AddHours(8).ToString("MMdd-HHmm");
+            Debug.Log("[CoopBuild] build version " + PlayerSettings.bundleVersion);
+
             var opts = new BuildPlayerOptions
             {
                 scenes = Scenes,

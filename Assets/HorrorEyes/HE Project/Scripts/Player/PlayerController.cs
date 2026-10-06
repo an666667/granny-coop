@@ -93,6 +93,14 @@ public class PlayerController : MonoBehaviour {
     [Header("Third Person Model Settings")]
     public Animator m_TPS_Player;
 
+    [Header("Jump Settings")]
+    [Tooltip("Upward speed applied when jumping")]
+    public float jumpSpeed = 4.5f;
+    [Tooltip("Downward acceleration while airborne")]
+    public float gravity = 18f;
+    private float m_verticalVelocity;
+    private bool m_jumpRequested;
+
 
     private void Awake()
     {
@@ -123,6 +131,12 @@ public class PlayerController : MonoBehaviour {
             m_TPS_Player.SetBool("Crouch", crouch);
             m_TPS_Player.SetBool("Run", m_running);
         }
+    }
+
+    /// <summary>Queued by the on-screen jump button; consumed in Movement().</summary>
+    public void RequestJump()
+    {
+        m_jumpRequested = true;
     }
 
     public void SetRun()
@@ -277,7 +291,23 @@ public class PlayerController : MonoBehaviour {
 
         Vector3 forvardMove = transform.forward * inputY;
         Vector3 sideMove = transform.right * inputX;
-        characterController.SimpleMove(forvardMove + sideMove);
+
+        // SimpleMove applies gravity itself but ignores any Y velocity, so it
+        // cannot jump. Drive the controller manually instead.
+        if (characterController.isGrounded)
+        {
+            m_verticalVelocity = -1f;                 // keep it pinned to the floor
+            if (m_jumpRequested) m_verticalVelocity = jumpSpeed;
+        }
+        else
+        {
+            m_verticalVelocity -= gravity * Time.deltaTime;
+        }
+        m_jumpRequested = false;
+
+        Vector3 motion = (forvardMove + sideMove) * Time.deltaTime
+                         + Vector3.up * m_verticalVelocity * Time.deltaTime;
+        characterController.Move(motion);
 
 
 

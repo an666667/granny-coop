@@ -93,6 +93,12 @@ namespace GrannyCoop
 
             EnsureEventSystem();
             _font = LoadFont();
+
+            // Build stamp. With several APKs in circulation, "is the phone
+            // actually running the new build?" has cost whole round trips, so
+            // the version now lives permanently on screen.
+            MakeLabel(_canvas.transform, "build " + Application.version, 22,
+                TextAnchor.LowerRight, new Color(1f, 1f, 1f, 0.6f));
         }
 
         // The scene ships an EventSystem object, but its module may be missing
@@ -309,7 +315,32 @@ namespace GrannyCoop
                 new Vector2(20, -20), new Vector2(1040, 210), new Color(0.05f, 0.05f, 0.07f, 0.55f), false);
             _gameStatusText = MakeLabel(_gameBar.transform, "", 26, TextAnchor.UpperLeft, Color.white);
             BuildLookToggle();
+            BuildJumpButton();
             UpdateStatus();
+        }
+
+        /// <summary>
+        /// Bottom-right jump button. The game ships no jump at all, so this is
+        /// the only way to trigger it on a phone. (RunButton sits at 74% height,
+        /// so the lower right is free - it is where the old look wheel used to be.)
+        /// </summary>
+        void BuildJumpButton()
+        {
+            var go = MakePanel(_canvas.transform, "Btn_Jump", new Vector2(1f, 0f),
+                new Vector2(-40f, 60f), new Vector2(210f, 160f),
+                new Color(0.20f, 0.42f, 0.24f, 0.88f), true);
+            var img = go.GetComponent<Image>();
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = img;
+            MakeLabel(go.transform, "跳", 48, TextAnchor.MiddleCenter, Color.white);
+            btn.onClick.AddListener(OnJump);
+        }
+
+        void OnJump()
+        {
+            var p = FindObjectOfType<PlayerController>();
+            if (p == null) return;
+            p.RequestJump();
         }
 
         Text _lookYawText, _lookPitchText;
@@ -396,7 +427,8 @@ namespace GrannyCoop
                   .Append(" 对齐").Append(av.AlignOffset.ToString("F2"));
             }
 
-            sb.Append("\n我: ");
+            sb.Append("\n").Append(s.EnemyDiag());
+            sb.Append("\n我(").Append(s.RoleName).Append("): ");
             if (s.HasLocalPlayer)
             {
                 Vector3 lp = s.LocalPlayerPos;
