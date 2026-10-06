@@ -306,9 +306,52 @@ namespace GrannyCoop
         void BuildGameBar()
         {
             _gameBar = MakePanel(_canvas.transform, "CoopBar", new Vector2(0f, 1f),
-                new Vector2(20, -20), new Vector2(620, 76), new Color(0.05f, 0.05f, 0.07f, 0.6f), false);
-            _gameStatusText = MakeLabel(_gameBar.transform, "", 30, TextAnchor.MiddleLeft, Color.white);
+                new Vector2(20, -20), new Vector2(1040, 210), new Color(0.05f, 0.05f, 0.07f, 0.55f), false);
+            _gameStatusText = MakeLabel(_gameBar.transform, "", 26, TextAnchor.UpperLeft, Color.white);
             UpdateStatus();
+        }
+
+        /// <summary>
+        /// Extra on-screen numbers so avatar problems are visible on the device
+        /// instead of needing logcat: does the peer avatar exist, is it active,
+        /// where is it, how far is it, and what did the model fitting measure.
+        /// </summary>
+        string BuildDiagnostics()
+        {
+            var s = CoopSession.Instance;
+            if (s == null) return "";
+            var sb = new System.Text.StringBuilder();
+
+            var av = s.PeerAvatarObject;
+            if (av == null)
+            {
+                sb.Append("对方角色: 无");
+            }
+            else
+            {
+                sb.Append("对方角色: ").Append(av.gameObject.activeSelf ? "显示" : "隐藏");
+                Vector3 p = av.transform.position;
+                sb.Append(" 位置(").Append(p.x.ToString("F1")).Append(",").Append(p.y.ToString("F1"))
+                  .Append(",").Append(p.z.ToString("F1")).Append(")");
+                if (s.HasLocalPlayer)
+                {
+                    float d = Vector3.Distance(p, s.LocalPlayerPos);
+                    sb.Append(" 距离").Append(d.ToString("F1"));
+                }
+                sb.Append("\n  模型 ").Append(av.ModelLoaded ? av.ModelName : "未加载")
+                  .Append(" 高").Append(av.MeasuredHeight.ToString("F2"))
+                  .Append(" 对齐").Append(av.AlignOffset.ToString("F2"));
+            }
+
+            sb.Append("\n我: ");
+            if (s.HasLocalPlayer)
+            {
+                Vector3 lp = s.LocalPlayerPos;
+                sb.Append("(").Append(lp.x.ToString("F1")).Append(",").Append(lp.y.ToString("F1"))
+                  .Append(",").Append(lp.z.ToString("F1")).Append(")");
+            }
+            else sb.Append("找不到本地玩家");
+            return sb.ToString();
         }
 
         void Update()
@@ -342,7 +385,11 @@ namespace GrannyCoop
             if (!string.IsNullOrEmpty(_feedback)) txt += "\n" + _feedback;
 
             if (_statusText != null) _statusText.text = txt;
-            if (_gameStatusText != null) _gameStatusText.text = txt;
+            if (_gameStatusText != null)
+            {
+                string d = BuildDiagnostics();
+                _gameStatusText.text = string.IsNullOrEmpty(d) ? txt : (txt + "\n" + d);
+            }
             if (_codeText != null && s != null) _codeText.text = s.RoomCode;
         }
 

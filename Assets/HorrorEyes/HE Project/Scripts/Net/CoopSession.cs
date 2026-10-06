@@ -132,6 +132,11 @@ namespace GrannyCoop
             _wsRetryAt = Time.unscaledTime + 4f;
         }
 
+        // ---- diagnostics accessors (read by CoopHud) ----
+        public CoopAvatar PeerAvatarObject { get { return _avatar; } }
+        public bool HasLocalPlayer { get { return _player != null; } }
+        public Vector3 LocalPlayerPos { get { return _player != null ? _player.transform.position : Vector3.zero; } }
+
         public void StopCoop()
         {
             if (_ws != null) { _ws.Close(); _ws = null; }

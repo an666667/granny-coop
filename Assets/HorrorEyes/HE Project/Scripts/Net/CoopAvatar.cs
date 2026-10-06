@@ -29,6 +29,14 @@ namespace GrannyCoop
         /// <summary>Player capsule height, used to size the model.</summary>
         const float PlayerHeight = 1.8f;
 
+        // exposed for the on-screen diagnostics
+        public float MeasuredHeight;
+        public float AlignOffset;
+        public bool  ModelLoaded;
+        public string ModelName = "";
+        GameObject _model;
+        bool _fitRetried;
+
         /// <summary>
         /// The Poly.pizza FBX has no pinned import scale (no .meta is shipped),
         /// so its native size cannot be trusted - it can come in far taller
@@ -66,6 +74,7 @@ namespace GrannyCoop
             if (!TryBounds(model, out b)) return;
 
             float h = b.size.y;
+            MeasuredHeight = h;
             if (h > 0.0001f)
             {
                 float k = targetHeight / h;
@@ -84,6 +93,7 @@ namespace GrannyCoop
             float delta = b.min.y - rootY;          // >0 floats, <0 sinks
             if (Mathf.Abs(delta) < 0.001f) return;
             model.transform.position -= new Vector3(0f, delta, 0f);
+            AlignOffset = -delta;
             NetConfig.Log("avatar: feet aligned by " + (-delta).ToString("F3"));
         }
 
@@ -103,6 +113,7 @@ namespace GrannyCoop
             _modelPath = path;
 
             GameObject model = null;
+            ModelName = path;
             var prefab = Resources.Load<GameObject>(path);
             if (prefab != null)
             {
@@ -127,7 +138,9 @@ namespace GrannyCoop
             model.transform.localPosition = Vector3.zero;
             model.transform.localRotation = Quaternion.identity;
             model.transform.localScale = Vector3.one;
+            _model = model;
             FitModel(model, PlayerHeight);
+            ModelLoaded = true;
 
             // solid body so the two players physically block each other.
             // On the host the separate CoopClientProxy already carries the body, so skip here.
@@ -196,6 +209,18 @@ namespace GrannyCoop
 
         void Update()
         {
+            // A freshly instantiated prefab can report degenerate renderer
+            // bounds for one frame; retry the measurement once the transforms
+            // have settled instead of leaving the model at its raw size.
+            if (!_fitRetried && _model != null && MeasuredHeight <= 0.0001f)
+            {
+                _fitRetried = true;
+                _model.transform.localPosition = Vector3.zero;
+                _model.transform.localScale = Vector3.one;
+                FitModel(_model, PlayerHeight);
+                NetConfig.Log("avatar: retried fit -> height " + MeasuredHeight.ToString("F3"));
+            }
+
             if (_hasTarget)
             {
                 transform.position = Vector3.Lerp(transform.position, _tPos, Time.deltaTime * NetConfig.InterpSpeed);
