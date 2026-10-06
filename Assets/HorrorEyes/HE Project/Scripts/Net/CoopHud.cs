@@ -371,6 +371,45 @@ namespace GrannyCoop
             }
 
             UpdateStatus();
+            EnsureLookWheelHidden();
+        }
+
+        float _wheelCheckAt;
+
+        /// <summary>
+        /// The game ships a right-hand look joystick ("JoystickLook") wired to the
+        /// very same "Mouse X"/"Mouse Y" axes the camera uses. Swipe-to-look
+        /// replaces it, so hide it - otherwise the wheel and the swipe fight over
+        /// the same rotation, which reads as a wrong direction.
+        /// Re-checked twice a second because the GameManager prefab is
+        /// re-instantiated on every scene load.
+        /// </summary>
+        void EnsureLookWheelHidden()
+        {
+            if (Time.unscaledTime < _wheelCheckAt) return;
+            _wheelCheckAt = Time.unscaledTime + 0.5f;
+
+            var scene = SceneManager.GetActiveScene();
+            if (!scene.IsValid()) return;
+
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                var t = FindDeep(root.transform, "JoystickLook");
+                if (t == null || !t.gameObject.activeSelf) continue;
+                t.gameObject.SetActive(false);
+                NetConfig.Log("hid the built-in look joystick (swipe look replaces it)");
+            }
+        }
+
+        static Transform FindDeep(Transform t, string name)
+        {
+            if (t.name == name) return t;
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var r = FindDeep(t.GetChild(i), name);
+                if (r != null) return r;
+            }
+            return null;
         }
 
         void UpdateStatus()

@@ -43,6 +43,47 @@ namespace GrannyCoop
         /// than the level. Measure it and scale it to the player height instead
         /// of forcing localScale = 1.
         /// </summary>
+        /// <summary>
+        /// Obviously-a-placeholder body so the peer is never invisible while the
+        /// Poly.pizza assets are being sorted out.
+        /// </summary>
+        static GameObject BuildPlaceholder()
+        {
+            var go = new GameObject("Placeholder");
+
+            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            body.name = "Body";
+            body.transform.SetParent(go.transform, false);
+            body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
+            body.transform.localScale = new Vector3(0.7f, 0.9f, 0.7f);
+
+            var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            head.name = "Head";
+            head.transform.SetParent(go.transform, false);
+            head.transform.localPosition = new Vector3(0f, 1.62f, 0f);
+            head.transform.localScale = Vector3.one * 0.42f;
+
+            // never block movement: the avatar's own capsule handles collision
+            foreach (var c in go.GetComponentsInChildren<Collider>(true)) Destroy(c);
+
+            var sh = Shader.Find("Standard");
+            if (sh == null) sh = Shader.Find("Mobile/Diffuse");
+            if (sh != null)
+            {
+                var mat = new Material(sh);
+                mat.color = new Color(0.95f, 0.35f, 0.25f);
+                foreach (var r in go.GetComponentsInChildren<Renderer>(true)) r.sharedMaterial = mat;
+            }
+            return go;
+        }
+
+        /// <summary>
+        /// Bounds of the model's geometry, expressed in the model root's own space.
+        /// Uses the mesh / skinned bounds instead of Renderer.bounds: right after
+        /// Instantiate the world-space bounds can still be degenerate, and a bogus
+        /// height becomes an absurd scale factor (which is exactly how one model
+        /// ended up taller than the level and "invisible" to the peer).
+        /// </summary>
         static bool TryBounds(GameObject model, out Bounds b)
         {
             b = new Bounds();
@@ -53,8 +94,28 @@ namespace GrannyCoop
             foreach (var r in renderers)
             {
                 if (r == null) continue;
-                if (!any) { b = r.bounds; any = true; }
-                else b.Encapsulate(r.bounds);
+
+                Bounds lb;
+                var smr = r as SkinnedMeshRenderer;
+                if (smr != null) lb = smr.localBounds;
+                else
+                {
+                    var mf = r.GetComponent<MeshFilter>();
+                    if (mf == null || mf.sharedMesh == null) continue;
+                    lb = mf.sharedMesh.bounds;
+                }
+
+                Matrix4x4 toRoot = model.transform.worldToLocalMatrix * r.transform.localToWorldMatrix;
+                Vector3 c = lb.center, e = lb.extents;
+                for (int i = 0; i < 8; i++)
+                {
+                    Vector3 p = toRoot.MultiplyPoint3x4(c + new Vector3(
+                        (i & 1) == 0 ? -e.x : e.x,
+                        (i & 2) == 0 ? -e.y : e.y,
+                        (i & 4) == 0 ? -e.z : e.z));
+                    if (!any) { b = new Bounds(p, Vector3.zero); any = true; }
+                    else b.Encapsulate(p);
+                }
             }
             return any;
         }
@@ -75,26 +136,26 @@ namespace GrannyCoop
 
             float h = b.size.y;
             MeasuredHeight = h;
-            if (h > 0.0001f)
+
+            // Reject implausible measurements instead of turning them into a wild
+            // scale factor. Update() retries once the transforms have settled.
+            if (h < 0.05f || h > 1000f)
             {
-                float k = targetHeight / h;
-                if (k > 0f && !float.IsNaN(k) && !float.IsInfinity(k))
-                {
-                    model.transform.localScale = model.transform.localScale * k;
-                    NetConfig.Log("avatar: model height " + h.ToString("F3") + " -> " + targetHeight.ToString("F2")
-                                  + " (x" + k.ToString("F4") + ")");
-                }
+                NetConfig.LogError("avatar: implausible model height " + h.ToString("F4") + ", skipping scale");
+                return;
             }
 
-            if (!TryBounds(model, out b)) return;
+            float k = targetHeight / h;
+            if (float.IsNaN(k) || float.IsInfinity(k) || k <= 0f) return;
+            model.transform.localScale = Vector3.one * k;
 
-            Transform root = model.transform.parent;
-            float rootY = (root != null) ? root.position.y : 0f;
-            float delta = b.min.y - rootY;          // >0 floats, <0 sinks
-            if (Mathf.Abs(delta) < 0.001f) return;
-            model.transform.position -= new Vector3(0f, delta, 0f);
-            AlignOffset = -delta;
-            NetConfig.Log("avatar: feet aligned by " + (-delta).ToString("F3"));
+            // b is in the model root's own space, so the lowest local y (times the
+            // scale we just applied) is exactly how far the feet sit from the root.
+            float minY = b.min.y * k;
+            model.transform.localPosition = new Vector3(0f, -minY, 0f);
+            AlignOffset = -minY;
+            NetConfig.Log("avatar: height " + h.ToString("F3") + " -> " + targetHeight.ToString("F2")
+                          + " (x" + k.ToString("F4") + ") feet " + (-minY).ToString("F3"));
         }
 
         public static CoopAvatar Create(int avatarIndex, Transform fallbackTpsModel)
@@ -127,10 +188,19 @@ namespace GrannyCoop
                 foreach (var col in model.GetComponentsInChildren<Collider>(true)) Destroy(col);
             }
 
+            // A model that imported without any renderer (or a missing asset)
+            // would leave the peer invisible, so fall back to a primitive body.
+            if (model != null && model.GetComponentsInChildren<Renderer>(true).Length == 0)
+            {
+                NetConfig.LogError("avatar: '" + path + "' has no renderers, using a placeholder body");
+                Destroy(model);
+                model = null;
+            }
             if (model == null)
             {
-                NetConfig.LogError("avatar: no model available");
-                return;
+                NetConfig.LogError("avatar: no usable model, using a placeholder body");
+                model = BuildPlaceholder();
+                ModelName = "placeholder";
             }
 
             model.name = "Model";
