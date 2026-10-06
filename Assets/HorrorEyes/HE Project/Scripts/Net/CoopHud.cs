@@ -308,7 +308,40 @@ namespace GrannyCoop
             _gameBar = MakePanel(_canvas.transform, "CoopBar", new Vector2(0f, 1f),
                 new Vector2(20, -20), new Vector2(1040, 210), new Color(0.05f, 0.05f, 0.07f, 0.55f), false);
             _gameStatusText = MakeLabel(_gameBar.transform, "", 26, TextAnchor.UpperLeft, Color.white);
+            BuildLookToggle();
             UpdateStatus();
+        }
+
+        Text _lookToggleText;
+
+        /// <summary>
+        /// Swipe-look direction is a taste thing, so make it switchable on the
+        /// device instead of costing a rebuild every time.
+        /// </summary>
+        void BuildLookToggle()
+        {
+            var go = MakePanel(_canvas.transform, "Btn_LookToggle", new Vector2(1f, 0.5f),
+                new Vector2(-24f, 0f), new Vector2(260f, 88f), new Color(0.16f, 0.16f, 0.20f, 0.85f), true);
+            var img = go.GetComponent<Image>();
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = img;
+            _lookToggleText = MakeLabel(go.transform, LookToggleLabel(), 28, TextAnchor.MiddleCenter, Color.white);
+            btn.onClick.AddListener(OnToggleLook);
+        }
+
+        static string LookToggleLabel()
+        {
+            return TouchLookInput.InvertYaw ? "视角 反向" : "视角 正向";
+        }
+
+        void OnToggleLook()
+        {
+            bool inv = !TouchLookInput.InvertYaw;
+            TouchLookInput.InvertYaw = inv;
+            TouchLookInput.InvertPitch = inv;
+            TouchLookInput.SavePrefs();
+            if (_lookToggleText != null) _lookToggleText.text = LookToggleLabel();
+            Note(inv ? "视角方向：反向（已记住）" : "视角方向：正向（已记住）");
         }
 
         /// <summary>

@@ -26,9 +26,28 @@ namespace GrannyCoop
         /// </summary>
         public static bool RightHalfOnly = true;
 
-        /// <summary>Flip the swipe direction. Set false for "drag the world" feel.</summary>
-        public static bool InvertYaw = true;
-        public static bool InvertPitch = true;
+        /// <summary>
+        /// Flip the swipe direction. Default is DIRECT: swipe left and the view
+        /// turns left. Players can toggle it in game (the 视角 button) and the
+        /// choice is remembered.
+        /// </summary>
+        public static bool InvertYaw = false;
+        public static bool InvertPitch = false;
+
+        const string InvertPrefKey = "CoopLookInvert";
+
+        public static void LoadPrefs()
+        {
+            bool inv = PlayerPrefs.GetInt(InvertPrefKey, 0) != 0;
+            InvertYaw = inv;
+            InvertPitch = inv;
+        }
+
+        public static void SavePrefs()
+        {
+            PlayerPrefs.SetInt(InvertPrefKey, (InvertYaw || InvertPitch) ? 1 : 0);
+            PlayerPrefs.Save();
+        }
 
         static int _fingerId = -1;
         static Vector2 _lastPos;

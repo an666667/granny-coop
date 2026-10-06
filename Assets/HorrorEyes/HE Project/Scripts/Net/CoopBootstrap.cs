@@ -11,6 +11,8 @@ namespace GrannyCoop
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Init()
         {
+            TouchLookInput.LoadPrefs();
+
             if (CoopSession.Instance == null)
             {
                 var go = new GameObject("CoopSession");
